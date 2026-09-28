@@ -9,7 +9,8 @@ import rl "vendor:raylib"
 // Nothing here changes the game state.
 // ---------------------------------------------------------------------------
 
-BACKGROUND :: rl.Color{20, 20, 28, 255}
+BACKGROUND     :: rl.Color{20, 20, 28, 255}
+SABOTAGE_COLOR :: rl.MAGENTA // the sabotage power-up, sabotage bullets, and the ring on armed players
 
 draw :: proc(g: ^Game) {
 	rl.BeginDrawing()
@@ -38,14 +39,28 @@ draw :: proc(g: ^Game) {
 draw_world :: proc(g: ^Game) {
 	rl.DrawRectangleLinesEx(ARENA, 2, rl.GRAY)
 
+	for pu in g.power_ups {
+		draw_power_up(pu)
+	}
 	for e in g.enemies {
 		rl.DrawCircleV(e.pos, ENEMY_RADIUS, rl.RED)
 	}
 	for b in g.bullets {
-		rl.DrawCircleV(b.pos, BULLET_RADIUS, rl.YELLOW)
+		rl.DrawCircleV(b.pos, bullet_radius(b), b.sabotage ? SABOTAGE_COLOR : rl.YELLOW)
 	}
 	for i in 0 ..< g.player_count {
 		draw_player(g, i)
+	}
+}
+
+// A slowly spinning diamond with a letter showing its kind.
+draw_power_up :: proc(pu: Power_Up) {
+	spin := f32(rl.GetTime()) * 90 // degrees
+	switch pu.kind {
+	case .Sabotage:
+		rl.DrawPoly(pu.pos, 4, POWER_UP_RADIUS, spin, SABOTAGE_COLOR)
+		w := rl.MeasureText("S", 16)
+		rl.DrawText("S", i32(pu.pos.x) - w / 2, i32(pu.pos.y) - 8, 16, rl.BLACK)
 	}
 }
 
@@ -60,6 +75,10 @@ draw_player :: proc(g: ^Game, index: int) {
 	blinking := p.invuln_timer > 0 && math.mod(p.invuln_timer, 0.2) < 0.1
 	if !blinking {
 		rl.DrawCircleV(p.pos, PLAYER_RADIUS, player_color(index))
+	}
+	// A magenta ring while this player has sabotage shots, so both players can see the threat.
+	if p.sabotage_shots > 0 {
+		rl.DrawCircleLinesV(p.pos, PLAYER_RADIUS + 5, SABOTAGE_COLOR)
 	}
 
 	// In versus, label each player so you know which circle is yours.
@@ -85,6 +104,9 @@ draw_title_screen :: proc(g: ^Game) {
 	draw_centered_text("WASD to move  -  Mouse to aim  -  Hold left click to shoot", 500, 22, rl.LIGHTGRAY)
 	draw_centered_text("Versus: last player standing wins", 530, 22, rl.LIGHTGRAY)
 	draw_centered_text("ESC to quit", 580, 20, rl.GRAY)
+	// TESTING ONLY (remove with the toggle).
+	enemies_text := g.enemies_disabled ? cstring("[N] Enemies: OFF  (testing)") : cstring("[N] Enemies: ON  (testing)")
+	draw_centered_text(enemies_text, 605, 18, rl.GRAY)
 	draw_message(g)
 }
 
@@ -136,9 +158,9 @@ draw_round_over :: proc(g: ^Game) {
 	if g.player_count == 1 {
 		draw_centered_text(fmt.ctprintf("Kills: %d", g.players[0].kills), 320, 36, rl.RAYWHITE)
 	} else {
+		// Only kills: both players always last the same time, since the round ends when one dies.
 		for i in 0 ..< g.player_count {
-			p := g.players[i]
-			text := fmt.ctprintf("P%d lasted %.1f s  -  %d kills", i + 1, p.time_survived, p.kills)
+			text := fmt.ctprintf("P%d  -  %d kills", i + 1, g.players[i].kills)
 			draw_centered_text(text, 310 + i32(i) * 40, 30, player_color(i))
 		}
 	}

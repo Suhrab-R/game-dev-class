@@ -21,16 +21,20 @@ this summary. They are the source of truth; this file condenses them.
 - **Last updated:** 2026-09-28, during session 1 (in progress, not logged yet)
 - **Twist:** **LAN versus multiplayer.** In one sentence: *"ARENA, but two players
   on different computers share the arena over Wi-Fi, and the last one standing wins."*
-  - Chosen in session 1 (Sep 28). Planned next: **power-ups and sabotages** between
-    the players (the user's plan; details not decided yet).
+  - Chosen in session 1 (Sep 28). Power-ups/sabotages between the players are the
+    depth layer. **Done so far: the Sabotage power-up** (see *Rules*). More power-ups
+    will follow (the user's plan; details not decided yet).
+  - **Temporary testing toggle:** `N` turns enemies off/on (`g.enemies_disabled`,
+    everything marked `TESTING ONLY`). The user wants it **removed later**, so it's on
+    the submission checklist.
   - Pitch history for the postmortem's "pitch vs. delivered": no pitch was set on
     Sep 23. A placeholder ("health is ammo") was written on Sep 27 and dropped on
     Sep 28 in favour of LAN versus.
   - Depth note for A3: versus alone isn't yet "choices with trade-offs" (it's still
     circle and shoot, just side by side). The planned sabotages/power-ups are where
     the depth has to come from. Keep steering them toward real trade-offs.
-- **Game state (session 1):** the starter was split into files (see *Code layout*)
-  and LAN versus was added. The menu offers `[1]` Solo (the original ARENA, 90 s),
+- **Game state (session 1):** the starter was split into files (see *Code layout*),
+  LAN versus was added, then the Sabotage power-up and the enemies-off testing toggle. The menu offers `[1]` Solo (the original ARENA, 90 s),
   `[2]` Host, `[3]` Join (type the host's IP). It builds with `-vet`, and a loopback
   test (host and client in one process) passed 14/14 checks. **Not yet play-tested
   by the user on two real computers.**
@@ -120,22 +124,25 @@ does the player choose?), **the trade-off** (what does each option cost?),
 |---|---|
 | `main.odin` | window + game loop only; ESC is not the exit key (`SetExitKey(.KEY_NULL)`) |
 | `config.odin` | tuning constants (`SOLO_ROUND_LENGTH`, speeds, `MAX_ENEMIES` 300, `MAX_BULLETS` 128), `player_color(i)` |
-| `types.odin` | `Mode` (Solo/Host/Client), `State`, `Outcome`, `Player`, `Bullet` (has `owner`), `Enemy`, `Player_Input`, `Game` |
+| `types.odin` | `Mode` (Solo/Host/Client), `State`, `Outcome`, `Player` (has `sabotage_shots`), `Bullet` (has `owner`, `sabotage`), `Enemy`, `Power_Up_Kind`, `Power_Up`, `Player_Input`, `Game` |
 | `input.odin` | `read_local_input()`: keyboard/mouse → `Player_Input` |
 | `game.odin` | `update` (state switch) → `update_solo` / `update_host` / `update_client`; `advance_game` (play or restart) |
 | `menu.odin` | title (1/2/3/ESC), join menu (IP typing), `start_solo/host/client`, `leave_to_title` |
 | `round.odin` | `reset_round`, `update_round` (the ordered list of steps), `check_round_over`, `end_round` |
-| `player.odin` | `update_player`, `move_player`, `try_shoot`, `damage_player` |
-| `bullets.odin` | `update_bullets`, `handle_bullet_enemy_hits` (kills credited to `owner`) |
+| `player.odin` | `update_player`, `move_player`, `try_shoot` (uses up sabotage shots first), `damage_player` (enemy hit, respects invuln), `sabotage_player` (also respects invuln; a blocked hit still uses the bullet) |
+| `bullets.odin` | `update_bullets`, `handle_sabotage_hits` (runs before enemy hits), `handle_bullet_enemy_hits` (kills credited to `owner`), `bullet_radius` |
+| `power_ups.odin` | `update_power_up_spawning` (versus only), `handle_power_up_pickups`, `apply_power_up` (switch on kind: **add new power-ups here**), `random_power_up_point` |
 | `enemies.odin` | `update_spawning`, `update_enemies` (chase **nearest alive** player), `handle_enemy_player_hits`, `random_edge_point` |
 | `network.odin` | UDP host/client, packets, `find_host_ips` |
-| `draw.odin` | `draw` (state switch), world, players (with "YOU"/"P1"/"P2" labels), menu screens, round-over overlay |
-| `hud.odin` | solo HUD (HP / time left / kills), versus HUD (P1 left, time, P2 right) |
+| `draw.odin` | `draw` (state switch), world, power-ups (spinning magenta diamond "S"), players (labels, magenta ring while armed), menu screens, round-over overlay (versus shows kills only) |
+| `hud.odin` | solo HUD (HP / time left / kills), versus HUD (per player: HP, kills, "Sabotage shots: N"), "ENEMIES OFF (N)" reminder |
 
 **How networking works (host-authoritative, UDP, port 7777):**
 - Only the host simulates. Every frame, the client sends an `Input_Packet` (its
-  `Player_Input`) and the host sends back a `Snapshot_Packet` (state, outcome, time,
-  both players, enemy and bullet positions as fixed arrays + counts, ~3.5 KB).
+  `Player_Input`) and the host sends back a `Snapshot_Packet` (state, outcome, the
+  enemies-off flag, time, both players, enemy positions, whole `Bullet`s and
+  `Power_Up`s as fixed arrays + counts, ~6.6 KB). **Any new state the client must
+  draw has to be added to the snapshot** (`send_snapshot` + `apply_snapshot`).
 - Structs are sent as raw bytes (`mem.ptr_to_bytes`), which works because both ends
   run the same build. Sockets are non-blocking. `receive_*` drains up to 64 packets a
   frame and keeps the newest, and a `PACKET_MAGIC` + kind + size check filters junk.
@@ -150,8 +157,21 @@ arena, no time limit (the ramp keeps going), and enemies chase the nearest livin
 player. The round ends the moment a player dies: the survivor wins, and both dying on
 the same frame is a draw. Players start 150 px either side of the centre.
 
+**Sabotage power-up (versus only):** one on the field at a time, appearing 5 s after
+the round starts or after the last pickup, at a random spot at least 60 px from the
+walls. Touching it sets `sabotage_shots = 3` (refills, doesn't stack). Your next 3
+bullets are sabotage bullets (magenta, radius 6):
+- One that hits the **other** player takes 1 HP and starts the usual 1 s blink.
+  **A hit during the blink does nothing, and the bullet is still used up** (user's
+  choice). So spraying all 3 at once wastes 2 of them; you have to space your shots.
+- One that hits an enemy kills it and is **used up**. That's the trade-off: waste them
+  on enemies, or keep them for your opponent.
+- Normal bullets and your own sabotage bullets pass through players.
+A magenta ring around a player and "Sabotage shots: N" in the HUD show who's armed.
+
 **Controls:** WASD/arrows move, mouse aim, hold LMB to shoot, R/Enter restart, ESC =
-back to menu (quit on the title screen).
+back to menu (quit on the title screen), N = enemies on/off (testing only; the host's
+setting is the one that counts).
 
 **Testing versus on one PC:** `odin build src -out:arena.exe`, then run `arena.exe`
 twice. Host in one window, join `127.0.0.1` in the other (only the focused window gets
@@ -341,6 +361,19 @@ Format: `S<n> · feature/bug · what happened · how verified`
   Fix: list only adapters that have a gateway, falling back to all · verified:
   the test harness printed `host IPs found: 1 [[192, 168, 2, 22]]` after the fix
   (it printed both addresses before).
+- S1 · versus polish · the round-over screen dropped "P lasted X s" (always equal for
+  both, since the round ends on the first death); it now shows kills only. The unused
+  `Player.time_survived` field was removed.
+- S1 · Sabotage power-up + enemies-off toggle · verified with the test harness:
+  25/25 checks (spawn timing, solo has none, pickup + refill, 3 rapid hits = exactly
+  −3 HP, normal bullets pass through, own sabotage is harmless, sabotage wasted on an
+  enemy, sabotage kill → win, toggle clears/stops/resumes enemies, snapshot carries
+  sabotage shots, bullets and power-ups to the client).
+- S1 · sabotage vs blink · Claude first made sabotage hits ignore invulnerability
+  (so rapid fire = −3 HP). The user chose the opposite: hits during the blink do
+  nothing, and the bullet is used up. Changed `sabotage_player` to check `invuln_timer`
+  · verified: the harness now shows rapid fire → −1 HP with the other 2 bullets used
+  up, and 3 hits spaced past the blink → −3 HP.
 
 ## Odin / Raylib notes (gotchas found while working)
 
@@ -366,6 +399,9 @@ Format: `S<n> · feature/bug · what happened · how verified`
       `mini-jam/`). The current `mini-jam/README.md` is the instructor's brief,
       so add a short "How to build and play" section at its top, or ask the user where.
 - [ ] Game complete: title → play → win/lose → replay, no crashes (3-min test).
+- [ ] **Remove the enemies-off testing toggle** (search `TESTING ONLY` / `enemies_disabled`
+      across `src/`: `types.odin`, `game.odin`, `round.odin`, `network.odin`,
+      `draw.odin`, `hud.odin`). Ask the user first; they said "later".
 - [ ] `jam-log.csv`: example row gone, one row per session, all columns filled
       (user fills helpfulness and notes).
 - [ ] `ATTRIBUTION.md`: code rows complete for every session (the instructor's

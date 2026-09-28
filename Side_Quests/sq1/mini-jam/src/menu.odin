@@ -90,6 +90,7 @@ leave_to_title :: proc(g: ^Game, message: cstring) {
 	close_network(&g.net)
 	clear(&g.bullets)
 	clear(&g.enemies)
+	clear(&g.power_ups)
 	g.state = .Title
 	g.message = message
 }

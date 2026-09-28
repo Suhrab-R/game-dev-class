@@ -8,7 +8,6 @@ update_player :: proc(g: ^Game, index: int, input: Player_Input, dt: f32) {
 	p := &g.players[index] // `&x` takes the address, so `p` is a pointer we can modify through
 	if !p.alive do return
 
-	p.time_survived += dt
 	p.invuln_timer -= dt
 	move_player(p, input, dt)
 	try_shoot(g, index, input, dt)
@@ -32,7 +31,11 @@ try_shoot :: proc(g: ^Game, index: int, input: Player_Input, dt: f32) {
 	dir := linalg.normalize0(input.aim - p.pos)
 	if dir == {0, 0} do return // aiming exactly at yourself: no direction to shoot in
 
-	append(&g.bullets, Bullet{pos = p.pos, vel = dir * BULLET_SPEED, owner = index})
+	// If this player has sabotage shots left, this bullet is one of them.
+	sabotage := p.sabotage_shots > 0
+	if sabotage do p.sabotage_shots -= 1
+
+	append(&g.bullets, Bullet{pos = p.pos, vel = dir * BULLET_SPEED, owner = index, sabotage = sabotage})
 	p.fire_cooldown = FIRE_COOLDOWN
 }
 
@@ -40,6 +43,16 @@ try_shoot :: proc(g: ^Game, index: int, input: Player_Input, dt: f32) {
 damage_player :: proc(p: ^Player) {
 	if p.invuln_timer > 0 do return
 	p.hp -= 1
+	p.invuln_timer = PLAYER_INVULN
+	if p.hp <= 0 do p.alive = false
+}
+
+// Applies a sabotage bullet hit: lose SABOTAGE_DAMAGE HP, then the same short
+// invulnerability window as an enemy hit. A sabotage bullet that lands during the
+// blink does nothing (and is still used up), so firing all three at once is a waste.
+sabotage_player :: proc(p: ^Player) {
+	if p.invuln_timer > 0 do return
+	p.hp -= SABOTAGE_DAMAGE
 	p.invuln_timer = PLAYER_INVULN
 	if p.hp <= 0 do p.alive = false
 }

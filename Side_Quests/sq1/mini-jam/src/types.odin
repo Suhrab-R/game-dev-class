@@ -34,23 +34,35 @@ Outcome :: enum u8 {
 }
 
 Player :: struct {
-	pos:           rl.Vector2,
-	hp:            int,
-	alive:         bool,
-	invuln_timer:  f32, // seconds of invulnerability left after being hit
-	fire_cooldown: f32, // seconds until the next shot is allowed
-	time_survived: f32, // seconds this player has been alive this round
-	kills:         int,
+	pos:            rl.Vector2,
+	hp:             int,
+	alive:          bool,
+	invuln_timer:   f32, // seconds of invulnerability left after being hit
+	fire_cooldown:  f32, // seconds until the next shot is allowed
+	kills:          int,
+	sabotage_shots: int, // how many of this player's next bullets can hurt the other player
 }
 
 Bullet :: struct {
-	pos:   rl.Vector2,
-	vel:   rl.Vector2, // pixels per second
-	owner: int,        // index of the player who fired it (they get the kill)
+	pos:      rl.Vector2,
+	vel:      rl.Vector2, // pixels per second
+	owner:    int,        // index of the player who fired it (they get the kill)
+	sabotage: bool,       // true if it can hit the other player (from the Sabotage power-up)
 }
 
 Enemy :: struct {
 	pos: rl.Vector2,
+}
+
+// The kinds of power-up. Only one so far; more will be added.
+Power_Up_Kind :: enum u8 {
+	Sabotage, // your next SABOTAGE_SHOTS bullets can damage the other player
+}
+
+// A power-up lying in the arena, waiting to be picked up.
+Power_Up :: struct {
+	pos:  rl.Vector2,
+	kind: Power_Up_Kind,
 }
 
 // Everything one player's controls said this frame.
@@ -65,21 +77,28 @@ Player_Input :: struct {
 // All the game's state lives in this one struct, which is passed around as a
 // pointer (`g: ^Game`, where `^T` means "pointer to T").
 Game :: struct {
-	mode:         Mode,
-	state:        State,
-	outcome:      Outcome,
-	quit:         bool, // set by the title screen to close the window
+	mode:            Mode,
+	state:           State,
+	outcome:         Outcome,
+	quit:            bool, // set by the title screen to close the window
 
-	players:      [MAX_PLAYERS]Player, // fixed-size array
-	player_count: int, // 1 in solo, 2 in versus
-	local_player: int, // which player this window controls: 0 = host/solo, 1 = client
-	bullets:      [dynamic]Bullet, // growable array (like std::vector / ArrayList)
-	enemies:      [dynamic]Enemy,
-	time:         f32, // seconds since the round started
-	spawn_timer:  f32, // seconds until the next enemy spawns
+	players:         [MAX_PLAYERS]Player, // fixed-size array
+	player_count:    int, // 1 in solo, 2 in versus
+	local_player:    int, // which player this window controls: 0 = host/solo, 1 = client
+	bullets:         [dynamic]Bullet, // growable array (like std::vector / ArrayList)
+	enemies:         [dynamic]Enemy,
+	power_ups:       [dynamic]Power_Up,
+	time:            f32, // seconds since the round started
+	spawn_timer:     f32, // seconds until the next enemy spawns
+	power_up_timer:  f32, // seconds until the next power-up appears
 
-	net:          Network,
-	ip_text:      [32]u8, // join menu: the characters of the IP address typed so far
-	ip_len:       int,
-	message:      cstring, // shown on the menus: errors, "host disconnected", ...
+	// TESTING ONLY (remove later): true = no enemies, so power-ups can be tested
+	// in peace. Toggled with N. Stored as "disabled" so the default (false, since
+	// Odin zero-initialises) means enemies are on.
+	enemies_disabled: bool,
+
+	net:             Network,
+	ip_text:         [32]u8, // join menu: the characters of the IP address typed so far
+	ip_len:          int,
+	message:         cstring, // shown on the menus: errors, "host disconnected", ...
 }

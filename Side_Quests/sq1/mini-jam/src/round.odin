@@ -12,8 +12,10 @@ import rl "vendor:raylib"
 reset_round :: proc(g: ^Game) {
 	clear(&g.bullets)
 	clear(&g.enemies)
+	clear(&g.power_ups)
 	g.time = 0
 	g.spawn_timer = SPAWN_START_INTERVAL
+	g.power_up_timer = POWER_UP_INTERVAL
 	g.outcome = .None // `.None` is an enum value; Odin infers the enum type (Outcome) from g.outcome
 
 	center := rl.Vector2{ARENA.x + ARENA.width / 2, ARENA.y + ARENA.height / 2}
@@ -40,10 +42,13 @@ update_round :: proc(g: ^Game, inputs: [MAX_PLAYERS]Player_Input, dt: f32) {
 		update_player(g, i, inputs[i], dt)
 	}
 	update_bullets(g, dt)
-	update_spawning(g, dt)
+	if !g.enemies_disabled do update_spawning(g, dt)
+	update_power_up_spawning(g, dt)
 	update_enemies(g, dt)
+	handle_sabotage_hits(g)
 	handle_bullet_enemy_hits(g)
 	handle_enemy_player_hits(g)
+	handle_power_up_pickups(g)
 
 	check_round_over(g)
 }

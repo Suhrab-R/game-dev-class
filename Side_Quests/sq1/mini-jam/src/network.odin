@@ -58,15 +58,18 @@ Input_Packet :: struct {
 // Enemies and bullets are fixed-size arrays with a count, because a packet
 // can't contain a pointer to a growable array.
 Snapshot_Packet :: struct {
-	header:       Packet_Header,
-	state:        State,
-	outcome:      Outcome,
-	time:         f32,
-	players:      [MAX_PLAYERS]Player,
-	enemy_count:  int,
-	bullet_count: int,
-	enemies:      [MAX_ENEMIES]rl.Vector2,
-	bullets:      [MAX_BULLETS]rl.Vector2,
+	header:           Packet_Header,
+	state:            State,
+	outcome:          Outcome,
+	enemies_disabled: bool, // TESTING toggle, so the client's HUD shows the host's setting
+	time:             f32,
+	players:          [MAX_PLAYERS]Player,
+	enemy_count:      int,
+	bullet_count:     int,
+	power_up_count:   int,
+	enemies:          [MAX_ENEMIES]rl.Vector2,
+	bullets:          [MAX_BULLETS]Bullet, // whole bullets, so the client knows which are sabotage ones
+	power_ups:        [MAX_POWER_UPS]Power_Up,
 }
 
 // ---------------------------------------------------------------------------
@@ -188,13 +191,16 @@ receive_snapshots :: proc(g: ^Game, now: f64) -> (got_one: bool) {
 apply_snapshot :: proc(g: ^Game, s: ^Snapshot_Packet) {
 	g.state = s.state
 	g.outcome = s.outcome
+	g.enemies_disabled = s.enemies_disabled
 	g.time = s.time
 	g.players = s.players
 
 	clear(&g.enemies)
 	for i in 0 ..< s.enemy_count do append(&g.enemies, Enemy{pos = s.enemies[i]})
 	clear(&g.bullets)
-	for i in 0 ..< s.bullet_count do append(&g.bullets, Bullet{pos = s.bullets[i]})
+	for i in 0 ..< s.bullet_count do append(&g.bullets, s.bullets[i])
+	clear(&g.power_ups)
+	for i in 0 ..< s.power_up_count do append(&g.power_ups, s.power_ups[i])
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +242,7 @@ send_snapshot :: proc(g: ^Game) {
 	s.header = {magic = PACKET_MAGIC, kind = .Snapshot}
 	s.state = g.state
 	s.outcome = g.outcome
+	s.enemies_disabled = g.enemies_disabled
 	s.time = g.time
 	s.players = g.players
 
@@ -244,7 +251,9 @@ send_snapshot :: proc(g: ^Game) {
 	s.enemy_count = min(len(g.enemies), MAX_ENEMIES)
 	for i in 0 ..< s.enemy_count do s.enemies[i] = g.enemies[i].pos
 	s.bullet_count = min(len(g.bullets), MAX_BULLETS)
-	for i in 0 ..< s.bullet_count do s.bullets[i] = g.bullets[i].pos
+	for i in 0 ..< s.bullet_count do s.bullets[i] = g.bullets[i]
+	s.power_up_count = min(len(g.power_ups), MAX_POWER_UPS)
+	for i in 0 ..< s.power_up_count do s.power_ups[i] = g.power_ups[i]
 
 	net.send_udp(g.net.socket, mem.ptr_to_bytes(&s), g.net.peer)
 }

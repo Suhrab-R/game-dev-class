@@ -9,6 +9,11 @@ import rl "vendor:raylib"
 // ---------------------------------------------------------------------------
 
 update :: proc(g: ^Game, dt: f32) {
+	// TESTING ONLY (remove later): N turns enemies on/off, so power-ups can be tested
+	// in peace. Works on any screen. In versus only the host's setting matters: the
+	// client's copy is overwritten by every snapshot.
+	if rl.IsKeyPressed(.N) do toggle_enemies(g)
+
 	switch g.state {
 	case .Title:
 		update_title(g)
@@ -72,6 +77,13 @@ update_client :: proc(g: ^Game) {
 			leave_to_title(g, "The host disconnected")
 		}
 	}
+}
+
+// TESTING ONLY (remove later): switches enemy spawning off (clearing any enemies
+// already in the arena) or back on.
+toggle_enemies :: proc(g: ^Game) {
+	g.enemies_disabled = !g.enemies_disabled
+	if g.enemies_disabled do clear(&g.enemies)
 }
 
 // Runs one frame of the game for the host or solo player: play the round, or
