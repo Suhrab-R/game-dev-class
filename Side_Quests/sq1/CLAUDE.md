@@ -21,9 +21,10 @@ this summary. They are the source of truth; this file condenses them.
 - **Last updated:** 2026-09-28, during session 1 (in progress, not logged yet)
 - **Twist:** **LAN versus multiplayer.** In one sentence: *"ARENA, but two players
   on different computers share the arena over Wi-Fi, and the last one standing wins."*
-  - Chosen in session 1 (Sep 28). Power-ups/sabotages between the players are the
-    depth layer. **Done so far: the Sabotage power-up** (see *Rules*). More power-ups
-    will follow (the user's plan; details not decided yet).
+  - Chosen in session 1 (Sep 28). Power-ups between the players are the depth layer.
+    **8 power-ups are in** (see *Power-ups* under *Rules*): Sabotage, Rapid Fire,
+    Laser, Ricochet, Shotgun (weapons, which replace each other), and Invincibility,
+    +1 HP, Shield (defensive, which stack).
   - **Temporary testing toggle:** `N` turns enemies off/on (`g.enemies_disabled`,
     everything marked `TESTING ONLY`). The user wants it **removed later**, so it's on
     the submission checklist.
@@ -34,10 +35,11 @@ this summary. They are the source of truth; this file condenses them.
     circle and shoot, just side by side). The planned sabotages/power-ups are where
     the depth has to come from. Keep steering them toward real trade-offs.
 - **Game state (session 1):** the starter was split into files (see *Code layout*),
-  LAN versus was added, then the Sabotage power-up and the enemies-off testing toggle. The menu offers `[1]` Solo (the original ARENA, 90 s),
-  `[2]` Host, `[3]` Join (type the host's IP). It builds with `-vet`, and a loopback
-  test (host and client in one process) passed 14/14 checks. **Not yet play-tested
-  by the user on two real computers.**
+  LAN versus was added, then the power-ups and the enemies-off testing toggle. The
+  menu offers `[1]` Solo (the original ARENA, now 150 s, now with power-ups except
+  Sabotage), `[2]` Host, `[3]` Join (type the host's IP). It builds with `-vet`, and
+  the test harness passes (0 failures). **Not yet play-tested by the user on two real
+  computers.**
 - **jam-log.csv:** still contains only the instructor's **example row**
   (`1,2026-09-23,40,...,claude-sonnet-5,...`). Replace it when logging the first
   real session (see *Session end protocol*).
@@ -48,8 +50,8 @@ this summary. They are the source of truth; this file condenses them.
   unless the user says otherwise.
 - **POSTMORTEM.md:** not started. It's written near submission (~Oct 4), not
   during sessions. See the rules below.
-- **Next milestone:** play-test versus on two computers for the **Mon Sep 28
-  showcase**, then add power-ups/sabotages.
+- **Next milestone:** play-test versus + power-ups on two computers for the **Mon
+  Sep 28 showcase**, then tune from showcase feedback.
 
 ---
 
@@ -123,25 +125,26 @@ does the player choose?), **the trade-off** (what does each option cost?),
 | file | what's in it |
 |---|---|
 | `main.odin` | window + game loop only; ESC is not the exit key (`SetExitKey(.KEY_NULL)`) |
-| `config.odin` | tuning constants (`SOLO_ROUND_LENGTH`, speeds, `MAX_ENEMIES` 300, `MAX_BULLETS` 128), `player_color(i)` |
-| `types.odin` | `Mode` (Solo/Host/Client), `State`, `Outcome`, `Player` (has `sabotage_shots`), `Bullet` (has `owner`, `sabotage`), `Enemy`, `Power_Up_Kind`, `Power_Up`, `Player_Input`, `Game` |
+| `config.odin` | tuning constants (`SOLO_ROUND_LENGTH`, speeds, `MAX_ENEMIES` 300, `MAX_BULLETS` 256, power-up timings/odds constants), `player_color(i)` |
+| `types.odin` | `Mode`, `State`, `Outcome`, `Weapon`, `Player` (weapon + timers, `sabotage_shots`, `invincible_timer`, `shield_hits`), `Bullet_Kind`, `Bullet` (`owner`, `kind`, `life`), `Enemy`, `Power_Up_Kind`, `Power_Up`, `Player_Input`, `Game` |
 | `input.odin` | `read_local_input()`: keyboard/mouse → `Player_Input` |
 | `game.odin` | `update` (state switch) → `update_solo` / `update_host` / `update_client`; `advance_game` (play or restart) |
 | `menu.odin` | title (1/2/3/ESC), join menu (IP typing), `start_solo/host/client`, `leave_to_title` |
 | `round.odin` | `reset_round`, `update_round` (the ordered list of steps), `check_round_over`, `end_round` |
-| `player.odin` | `update_player`, `move_player`, `try_shoot` (uses up sabotage shots first), `damage_player` (enemy hit, respects invuln), `sabotage_player` (also respects invuln; a blocked hit still uses the bullet) |
-| `bullets.odin` | `update_bullets`, `handle_sabotage_hits` (runs before enemy hits), `handle_bullet_enemy_hits` (kills credited to `owner`), `bullet_radius` |
-| `power_ups.odin` | `update_power_up_spawning` (versus only), `handle_power_up_pickups`, `apply_power_up` (switch on kind: **add new power-ups here**), `random_power_up_point` |
+| `player.odin` | `update_player`, `update_player_timers` (weapon/invincibility expiry), `move_player`, `try_shoot` (switch on weapon), `fire_bullet`, `hit_player` (the one damage path: invincible → blink → shield → HP) |
+| `bullets.odin` | `update_bullets` (+ `bounce_off_walls` for ricochet), `handle_sabotage_hits` (runs before enemy hits), `handle_bullet_enemy_hits` (lasers don't get used up), `bullet_hits_circle`, `laser_segment`, `bullet_radius` |
+| `power_ups.odin` | `power_up_weight` (spawn odds), `update_power_up_spawning`, `random_power_up_kind` (weighted), `handle_power_up_pickups`, `apply_power_up` (**add new power-ups here**), `equip_weapon` |
 | `enemies.odin` | `update_spawning`, `update_enemies` (chase **nearest alive** player), `handle_enemy_player_hits`, `random_edge_point` |
 | `network.odin` | UDP host/client, packets, `find_host_ips` |
-| `draw.odin` | `draw` (state switch), world, power-ups (spinning magenta diamond "S"), players (labels, magenta ring while armed), menu screens, round-over overlay (versus shows kills only) |
-| `hud.odin` | solo HUD (HP / time left / kills), versus HUD (per player: HP, kills, "Sabotage shots: N"), "ENEMIES OFF (N)" reminder |
+| `draw.odin` | `draw` (state switch), world, `draw_bullet` (laser = line), `draw_power_up` + `power_up_look` (colour + letter), `draw_player_effects` (rings), power-up colour constants, menu screens (title has the power-up legend), round-over overlay (versus shows kills only) |
+| `hud.odin` | solo HUD, versus HUD, `effects_text` (active power-ups line), "ENEMIES OFF (N)" reminder |
 
 **How networking works (host-authoritative, UDP, port 7777):**
 - Only the host simulates. Every frame, the client sends an `Input_Packet` (its
   `Player_Input`) and the host sends back a `Snapshot_Packet` (state, outcome, the
   enemies-off flag, time, both players, enemy positions, whole `Bullet`s and
-  `Power_Up`s as fixed arrays + counts, ~6.6 KB). **Any new state the client must
+  `Power_Up`s as fixed arrays + counts; ~10.8 KB since `MAX_BULLETS` went to 256
+for rapid fire and the shotgun). **Any new state the client must
   draw has to be added to the snapshot** (`send_snapshot` + `apply_snapshot`).
 - Structs are sent as raw bytes (`mem.ptr_to_bytes`), which works because both ends
   run the same build. Sockets are non-blocking. `receive_*` drains up to 64 packets a
@@ -152,22 +155,56 @@ does the player choose?), **the trade-off** (what does each option cost?),
 - `restart` in the input is *held* (R/Enter), not pressed, so one lost packet can't
   swallow it. Either player can restart from the round-over screen.
 
-**Rules:** solo = survive 90 s (as in the starter). Versus = both players in one
+**Rules:** solo = survive **150 s** (the starter had 90; the user raised it). Enemy
+speed = 120 + 1.6 px/s per second of the round (starter: 90 + 1.2; the user asked
+for a faster start and ramp), **capped at 250 px/s** (`ENEMY_MAX_SPEED`, reached at
+~81 s), just under the player's 260 so they can always be outrun. After the cap, the
+difficulty keeps rising only through the spawn rate (floor 0.25 s). Versus = both players in one
 arena, no time limit (the ramp keeps going), and enemies chase the nearest living
 player. The round ends the moment a player dies: the survivor wins, and both dying on
 the same frame is a draw. Players start 150 px either side of the centre.
 
-**Sabotage power-up (versus only):** one on the field at a time, appearing 5 s after
-the round starts or after the last pickup, at a random spot at least 60 px from the
-walls. Touching it sets `sabotage_shots = 3` (refills, doesn't stack). Your next 3
-bullets are sabotage bullets (magenta, radius 6):
-- One that hits the **other** player takes 1 HP and starts the usual 1 s blink.
-  **A hit during the blink does nothing, and the bullet is still used up** (user's
-  choice). So spraying all 3 at once wastes 2 of them; you have to space your shots.
-- One that hits an enemy kills it and is **used up**. That's the trade-off: waste them
-  on enemies, or keep them for your opponent.
-- Normal bullets and your own sabotage bullets pass through players.
-A magenta ring around a player and "Sabotage shots: N" in the HUD show who's armed.
+**Power-ups (spawning):** up to **3** on the field at once. One spawns every **6 s**
+(`POWER_UP_INTERVAL`), and the timer only runs while there's room. They spawn at a random
+spot at least 60 px from the walls, in solo too (except Sabotage). Kind is a weighted
+roll (`power_up_weight` in `power_ups.odin`, weights add up to 100 so they're
+versus percentages): Sabotage 16, **Laser 15**, Rapid Fire 13, Shotgun 13, Ricochet 12,
+Shield 12, +HP 12, **Invincibility 7 (rare)**. Laser 15% and invincibility 7% were set
+by the user, and the others were scaled down to keep the total at 100. Drawn as a
+spinning diamond in the power-up's colour with a letter: **S**abotage (magenta),
+**R**apid (yellow), **L**aser (green), **B**ounce/ricochet (violet), **W**ide/shotgun
+(pink), **I**nvincible (gold), **+** HP (red), **O** shield (blue). The title screen
+has the legend.
+
+**Weapons: one at a time.** Picking up any weapon replaces the current one, including
+leftover sabotage shots (`equip_weapon`). The user's rule is "power-ups that change
+shooting cancel each other", and Claude counted Sabotage as one of them. Timed weapons
+last **5 s** (`WEAPON_DURATION`; the user cut it from 10).
+- **Sabotage** (counted in shots, not time): the next 3 bullets are magenta, radius 6.
+  A hit on the **other** player is a `hit_player(p, 1)`, so a hit during the blink does
+  nothing, but the bullet is still used up (user's choice). Spraying all 3 wastes 2.
+  Hitting an enemy kills it and uses the shot up (the trade-off). Then back to Normal.
+- **Rapid Fire:** cooldown 0.05 s (normal 0.15), normal bullets.
+- **Laser:** 1400 px/s beam, 60 px long (a line segment, `CheckCollisionCircleLine`),
+  **pierces every enemy**, disappears when its tip leaves the arena. Cooldown 0.3 s.
+- **Ricochet:** bullets bounce off walls (`bounce_off_walls` mirrors position and
+  flips velocity) and live **3 s** (Claude's pick of the user's 3 or 5), or until
+  they hit an enemy.
+- **Shotgun:** 3 pellets per shot at −0.2 / 0 / +0.2 rad (`rl.Vector2Rotate`),
+  cooldown 0.35 s.
+
+**Defensive: stack with everything.** Each refills rather than stacks.
+- **Invincibility:** 5 s with no damage from anything (enemies/sabotage bullets that
+  touch you are still used up). Gold halo.
+- **+1 HP:** can go above 5, capped at 8 (`BONUS_HP_CAP`).
+- **Shield:** absorbs 2 hits. Blue rings, one per hit left. An absorbed hit still starts
+  the blink, and a hit during the blink doesn't use a shield charge.
+
+`hit_player` order: invincible → ignore; blinking → ignore; shield → absorb (−1
+charge, start blink); else −HP (start blink). Normal/laser/ricochet/own-sabotage
+bullets never hurt players. Rings around players show weapon (thin, weapon colour),
+shield and invincibility. The HUD line under each player's stats shows e.g.
+"Laser 7s   Shield 2   Invincible 4s".
 
 **Controls:** WASD/arrows move, mouse aim, hold LMB to shoot, R/Enter restart, ESC =
 back to menu (quit on the title screen), N = enemies on/off (testing only; the host's
@@ -374,6 +411,27 @@ Format: `S<n> · feature/bug · what happened · how verified`
   nothing, and the bullet is used up. Changed `sabotage_player` to check `invuln_timer`
   · verified: the harness now shows rapid fire → −1 HP with the other 2 bullets used
   up, and 3 hits spaced past the blink → −3 HP.
+- S1 · 7 more power-ups (Invincibility, Rapid Fire, Laser, Ricochet, +1 HP, Shield,
+  Shotgun), up to 3 on the field, random 3–7 s spawns, weighted odds · verified:
+  44/44 harness checks (odds measured over 20k rolls, invincibility 3.9%; weapons
+  replace each other and defensive ones stack; 10 s expiry; the laser killed 3 enemies
+  in a line and was gone at the wall; ricochet stayed inside through corner bounces
+  and died at 3 s; shield absorbed exactly 2; invincibility blocked enemies and
+  sabotage; network carries weapons, bullet kinds and power-up kinds).
+- S1 · tuning (user's call) · power-up spawns went from random 3–7 s to a fixed 6 s,
+  timed power-ups from 10 s to 5 s, laser to 15% and invincibility to 7% · verified:
+  harness 0 failures (first spawn at 6 s and the next 6 s later, 5 s expiry, odds over
+  20k rolls: laser 15.5%, invincibility 7.3%).
+- S1 · tuning (user's call) · solo round 90 s → 150 s; enemy base speed 90 → 120 px/s,
+  growth 1.2 → 1.6 px/s per second (they now outrun the player after ~88 s,
+  previously ~142 s) · verified: build passes; not play-tested yet.
+- S1 · enemy speed cap (user's call, after Claude pointed out solo's last minute
+  would have enemies faster than the player) · `ENEMY_MAX_SPEED` 250 · verified by a
+  speed probe: 120 px/s at 0 s, 184 at 40 s, 250 at 81 s, and still 250 at 150 s and 300 s.
+  Test-side bug worth knowing: the first fire-rate check measured shots as the frame's
+  change in bullet count, so bullets leaving at the wall cancelled new shots. Rapid
+  fire read 17 vs normal 18 (a false FAIL). Counting and clearing each frame gave the
+  true 60 vs 18.
 
 ## Odin / Raylib notes (gotchas found while working)
 

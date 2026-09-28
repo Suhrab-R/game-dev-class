@@ -33,30 +33,62 @@ Outcome :: enum u8 {
 	Draw,         // versus: both died on the same frame
 }
 
+// What the player's gun currently does. Only one at a time: picking up a
+// weapon power-up replaces whatever weapon the player had.
+Weapon :: enum u8 {
+	Normal,
+	Sabotage,   // next SABOTAGE_SHOTS bullets can hurt the other player
+	Rapid_Fire, // shoots much faster
+	Laser,      // fast beams that pierce every enemy until they reach a wall
+	Ricochet,   // bullets bounce off walls for RICOCHET_LIFETIME seconds
+	Shotgun,    // SHOTGUN_PELLETS bullets per shot, in a spread
+}
+
 Player :: struct {
-	pos:            rl.Vector2,
-	hp:             int,
-	alive:          bool,
-	invuln_timer:   f32, // seconds of invulnerability left after being hit
-	fire_cooldown:  f32, // seconds until the next shot is allowed
-	kills:          int,
-	sabotage_shots: int, // how many of this player's next bullets can hurt the other player
+	pos:              rl.Vector2,
+	hp:               int,
+	alive:            bool,
+	invuln_timer:     f32, // seconds of the short blink after being hit (hits do nothing meanwhile)
+	fire_cooldown:    f32, // seconds until the next shot is allowed
+	kills:            int,
+
+	weapon:           Weapon,
+	weapon_timer:     f32, // seconds left on a timed weapon (rapid fire, laser, ricochet, shotgun)
+	sabotage_shots:   int, // sabotage bullets left (sabotage is counted in shots, not time)
+	invincible_timer: f32, // seconds left of the Invincibility power-up
+	shield_hits:      int, // hits the Shield power-up will still absorb
+}
+
+Bullet_Kind :: enum u8 {
+	Normal,   // also used by rapid fire and the shotgun pellets
+	Sabotage, // can hit the other player
+	Laser,    // pierces enemies
+	Ricochet, // bounces off walls
 }
 
 Bullet :: struct {
-	pos:      rl.Vector2,
-	vel:      rl.Vector2, // pixels per second
-	owner:    int,        // index of the player who fired it (they get the kill)
-	sabotage: bool,       // true if it can hit the other player (from the Sabotage power-up)
+	pos:   rl.Vector2, // for a laser, this is the front tip of the beam
+	vel:   rl.Vector2, // pixels per second
+	owner: int,        // index of the player who fired it (they get the kill)
+	kind:  Bullet_Kind,
+	life:  f32,        // ricochet only: seconds left before it disappears
 }
 
 Enemy :: struct {
 	pos: rl.Vector2,
 }
 
-// The kinds of power-up. Only one so far; more will be added.
 Power_Up_Kind :: enum u8 {
-	Sabotage, // your next SABOTAGE_SHOTS bullets can damage the other player
+	// Weapons (replace each other)
+	Sabotage,
+	Rapid_Fire,
+	Laser,
+	Ricochet,
+	Shotgun,
+	// Defensive (stack with everything)
+	Invincibility,
+	Extra_HP,
+	Shield,
 }
 
 // A power-up lying in the arena, waiting to be picked up.

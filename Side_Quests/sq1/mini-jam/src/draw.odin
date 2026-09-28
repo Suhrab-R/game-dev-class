@@ -9,8 +9,18 @@ import rl "vendor:raylib"
 // Nothing here changes the game state.
 // ---------------------------------------------------------------------------
 
-BACKGROUND     :: rl.Color{20, 20, 28, 255}
-SABOTAGE_COLOR :: rl.MAGENTA // the sabotage power-up, sabotage bullets, and the ring on armed players
+BACKGROUND :: rl.Color{20, 20, 28, 255}
+
+// Each power-up's colour is reused for its bullets / the ring it puts around a
+// player, so what you see on the field matches what it does.
+SABOTAGE_COLOR      :: rl.MAGENTA
+RAPID_FIRE_COLOR    :: rl.YELLOW
+LASER_COLOR         :: rl.GREEN
+RICOCHET_COLOR      :: rl.VIOLET
+SHOTGUN_COLOR       :: rl.PINK
+INVINCIBILITY_COLOR :: rl.GOLD
+EXTRA_HP_COLOR      :: rl.RED
+SHIELD_COLOR        :: rl.BLUE
 
 draw :: proc(g: ^Game) {
 	rl.BeginDrawing()
@@ -46,22 +56,51 @@ draw_world :: proc(g: ^Game) {
 		rl.DrawCircleV(e.pos, ENEMY_RADIUS, rl.RED)
 	}
 	for b in g.bullets {
-		rl.DrawCircleV(b.pos, bullet_radius(b), b.sabotage ? SABOTAGE_COLOR : rl.YELLOW)
+		draw_bullet(b)
 	}
 	for i in 0 ..< g.player_count {
 		draw_player(g, i)
 	}
 }
 
-// A slowly spinning diamond with a letter showing its kind.
-draw_power_up :: proc(pu: Power_Up) {
-	spin := f32(rl.GetTime()) * 90 // degrees
-	switch pu.kind {
+// Lasers are drawn as beams; every other bullet as a dot coloured by its kind.
+draw_bullet :: proc(b: Bullet) {
+	switch b.kind {
+	case .Laser:
+		tip, tail := laser_segment(b)
+		rl.DrawLineEx(tail, tip, LASER_WIDTH, LASER_COLOR)
+		rl.DrawLineEx(tail, tip, LASER_WIDTH / 3, rl.RAYWHITE) // bright core, so it reads as a beam
 	case .Sabotage:
-		rl.DrawPoly(pu.pos, 4, POWER_UP_RADIUS, spin, SABOTAGE_COLOR)
-		w := rl.MeasureText("S", 16)
-		rl.DrawText("S", i32(pu.pos.x) - w / 2, i32(pu.pos.y) - 8, 16, rl.BLACK)
+		rl.DrawCircleV(b.pos, bullet_radius(b), SABOTAGE_COLOR)
+	case .Ricochet:
+		rl.DrawCircleV(b.pos, bullet_radius(b), RICOCHET_COLOR)
+	case .Normal:
+		rl.DrawCircleV(b.pos, bullet_radius(b), rl.YELLOW)
 	}
+}
+
+// A slowly spinning diamond in the power-up's colour, with its letter on top.
+draw_power_up :: proc(pu: Power_Up) {
+	color, letter := power_up_look(pu.kind)
+	spin := f32(rl.GetTime()) * 90 // degrees
+	rl.DrawPoly(pu.pos, 4, POWER_UP_RADIUS, spin, color)
+	w := rl.MeasureText(letter, 16)
+	rl.DrawText(letter, i32(pu.pos.x) - w / 2, i32(pu.pos.y) - 8, 16, rl.BLACK)
+}
+
+// Colour and letter for each kind of power-up (the title screen lists what the letters mean).
+power_up_look :: proc(kind: Power_Up_Kind) -> (color: rl.Color, letter: cstring) {
+	switch kind {
+	case .Sabotage:      return SABOTAGE_COLOR, "S"
+	case .Rapid_Fire:    return RAPID_FIRE_COLOR, "R"
+	case .Laser:         return LASER_COLOR, "L"
+	case .Ricochet:      return RICOCHET_COLOR, "B"
+	case .Shotgun:       return SHOTGUN_COLOR, "W"
+	case .Invincibility: return INVINCIBILITY_COLOR, "I"
+	case .Extra_HP:      return EXTRA_HP_COLOR, "+"
+	case .Shield:        return SHIELD_COLOR, "O"
+	}
+	return rl.RAYWHITE, "?"
 }
 
 draw_player :: proc(g: ^Game, index: int) {
@@ -76,10 +115,7 @@ draw_player :: proc(g: ^Game, index: int) {
 	if !blinking {
 		rl.DrawCircleV(p.pos, PLAYER_RADIUS, player_color(index))
 	}
-	// A magenta ring while this player has sabotage shots, so both players can see the threat.
-	if p.sabotage_shots > 0 {
-		rl.DrawCircleLinesV(p.pos, PLAYER_RADIUS + 5, SABOTAGE_COLOR)
-	}
+	draw_player_effects(p)
 
 	// In versus, label each player so you know which circle is yours.
 	if g.player_count == 2 {
@@ -87,6 +123,34 @@ draw_player :: proc(g: ^Game, index: int) {
 		w := rl.MeasureText(label, 16)
 		rl.DrawText(label, i32(p.pos.x) - w / 2, i32(p.pos.y - PLAYER_RADIUS) - 20, 16, player_color(index))
 	}
+}
+
+// Rings around a player showing their active power-ups, so both players can see them:
+//   weapon: a thin ring in the weapon's colour
+//   shield: one blue ring per hit it will still absorb
+//   invincibility: a thick gold halo
+draw_player_effects :: proc(p: Player) {
+	if p.weapon != .Normal {
+		rl.DrawCircleLinesV(p.pos, PLAYER_RADIUS + 4, weapon_color(p.weapon))
+	}
+	for i in 0 ..< p.shield_hits {
+		rl.DrawCircleLinesV(p.pos, PLAYER_RADIUS + 8 + f32(i) * 3, SHIELD_COLOR)
+	}
+	if p.invincible_timer > 0 {
+		rl.DrawRing(p.pos, PLAYER_RADIUS + 15, PLAYER_RADIUS + 18, 0, 360, 32, INVINCIBILITY_COLOR)
+	}
+}
+
+weapon_color :: proc(weapon: Weapon) -> rl.Color {
+	switch weapon {
+	case .Sabotage:   return SABOTAGE_COLOR
+	case .Rapid_Fire: return RAPID_FIRE_COLOR
+	case .Laser:      return LASER_COLOR
+	case .Ricochet:   return RICOCHET_COLOR
+	case .Shotgun:    return SHOTGUN_COLOR
+	case .Normal:
+	}
+	return rl.RAYWHITE
 }
 
 // ---------------------------------------------------------------------------
@@ -101,8 +165,9 @@ draw_title_screen :: proc(g: ^Game) {
 	draw_centered_text("[2]  Host a LAN versus game", 365, 30, rl.YELLOW)
 	draw_centered_text("[3]  Join a LAN versus game", 410, 30, rl.YELLOW)
 
-	draw_centered_text("WASD to move  -  Mouse to aim  -  Hold left click to shoot", 500, 22, rl.LIGHTGRAY)
-	draw_centered_text("Versus: last player standing wins", 530, 22, rl.LIGHTGRAY)
+	draw_centered_text("WASD to move  -  Mouse to aim  -  Hold left click to shoot", 480, 22, rl.LIGHTGRAY)
+	draw_centered_text("Versus: last player standing wins", 510, 22, rl.LIGHTGRAY)
+	draw_centered_text("Power-ups:  S sabotage   R rapid fire   L laser   B bounce   W wide shot   I invincible   + HP   O shield", 545, 18, rl.LIGHTGRAY)
 	draw_centered_text("ESC to quit", 580, 20, rl.GRAY)
 	// TESTING ONLY (remove with the toggle).
 	enemies_text := g.enemies_disabled ? cstring("[N] Enemies: OFF  (testing)") : cstring("[N] Enemies: ON  (testing)")

@@ -18,9 +18,9 @@ update_spawning :: proc(g: ^Game, dt: f32) {
 }
 
 // Moves every enemy straight toward the nearest living player.
-// Enemies also speed up the longer the round lasts.
+// Enemies speed up the longer the round lasts, up to ENEMY_MAX_SPEED.
 update_enemies :: proc(g: ^Game, dt: f32) {
-	speed := ENEMY_BASE_SPEED + g.time * ENEMY_SPEED_GROWTH
+	speed := min(ENEMY_BASE_SPEED + g.time * ENEMY_SPEED_GROWTH, ENEMY_MAX_SPEED)
 	for &e in g.enemies { // `&e` loops by reference, so changing e changes the enemy in the array
 		target, found := nearest_alive_player(g, e.pos) // procs can return several values
 		if !found do continue
@@ -28,14 +28,15 @@ update_enemies :: proc(g: ^Game, dt: f32) {
 	}
 }
 
-// Enemy vs player: the enemy is consumed and the player takes a hit.
+// Enemy vs player: the enemy is consumed and the player takes a hit (which an
+// invincible, blinking or shielded player shrugs off, see hit_player).
 handle_enemy_player_hits :: proc(g: ^Game) {
 	for ei := len(g.enemies) - 1; ei >= 0; ei -= 1 { // backwards: see update_bullets
 		for i in 0 ..< g.player_count {
 			p := &g.players[i]
 			if p.alive && rl.CheckCollisionCircles(g.enemies[ei].pos, ENEMY_RADIUS, p.pos, PLAYER_RADIUS) {
 				unordered_remove(&g.enemies, ei)
-				damage_player(p)
+				hit_player(p, 1)
 				break // this enemy is gone
 			}
 		}
