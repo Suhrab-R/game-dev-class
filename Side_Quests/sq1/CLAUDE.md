@@ -18,7 +18,8 @@ this summary. They are the source of truth; this file condenses them.
 
 ## Current status (keep this section up to date)
 
-- **Last updated:** 2026-09-28, during session 1 (in progress, not logged yet)
+- **Last updated:** 2026-09-28, end of session 1 (logged). The next "session start" …
+  "session end" pair is **session 2**.
 - **Twist:** **LAN versus multiplayer.** In one sentence: *"ARENA, but two players
   on different computers share the arena over Wi-Fi, and the last one standing wins."*
   - Chosen in session 1 (Sep 28). Power-ups between the players are the depth layer.
@@ -40,12 +41,14 @@ this summary. They are the source of truth; this file condenses them.
   Sabotage), `[2]` Host, `[3]` Join (type the host's IP). It builds with `-vet`, and
   the test harness passes (0 failures). **Not yet play-tested by the user on two real
   computers.**
-- **jam-log.csv:** still contains only the instructor's **example row**
-  (`1,2026-09-23,40,...,claude-sonnet-5,...`). Replace it when logging the first
-  real session (see *Session end protocol*).
+- **jam-log.csv:** the instructor's example row has been replaced. Row 1 = session 1
+  (2026-09-28, 76 min, 7 prompts, ccusage). `llm_helpfulness` and `notes` are left
+  blank for the user to fill in. Append new sessions below it.
 - **ATTRIBUTION.md:** the existing Code row for `src/main.odin` ("Build the base
   ARENA game...") is the **instructor's entry**. **Keep it as is**, never replace
-  or delete it (the user's decision). It's also the format model for new rows. The
+  or delete it (the user's decision). It's also the format model for new rows.
+  Session 1 added 7 rows (one per prompt, with its files comma-separated, tagged
+  "(session 1)"). The
   Kenney row under "AI-generated assets" is an instructor example; leave it alone
   unless the user says otherwise.
 - **POSTMORTEM.md:** not started. It's written near submission (~Oct 4), not
@@ -355,19 +358,30 @@ Columns: `session,date,minutes,tool,model,tokens_in,tokens_out,tokens_source,pro
 
 ### 3. Update `mini-jam/ATTRIBUTION.md` → `## Code` table
 
-One row per **game code file** created or changed this session (files under
-`mini-jam/src/`, build scripts, etc.; not logs, docs, the postmortem or this
-file). Use the script's "files edited" list plus `git status` / `git diff`
-(shell edits aren't in the script's list).
+**One row per user prompt that led to editing game code**, listing every file that
+prompt edited, comma-separated, without the `src/` prefix. The prompt
+column is a summary of **the user's actual prompt**: the last prompt they sent
+before the edit. It is **not** a description of what the code does (the user
+corrected this after session 1, when Claude first wrote code descriptions).
 
-`| \`src/file.odin\` | claude-code, <model> | <prompt (short)> | <hand edits> |`
+How:
+1. Run the script with `--prompts`. Under each prompt it prints `-> edited: ...`, the
+   files Claude edited between that prompt and the next.
+2. Keep only game code files (`mini-jam/src/*.odin`, build scripts). Skip
+   `CLAUDE.md`, logs, docs, the postmortem and scratch test files.
+3. For each prompt, add **one row**: its edited game files, comma-separated, in
+   the first column (e.g. `` `config.odin`, `enemies.odin` ``), then the summary.
+4. Shell edits (`sed`, python) aren't in the script's list. If one touched a
+   `src/` file after a prompt, add that file under that prompt too.
 
-- **prompt (short)**: a one-sentence *summary* of what was asked for that file,
-  in the style of the existing `src/main.odin` row. **Never paste the user's raw
-  prompts.** They are long; condense them.
-- If the file already has a row from an earlier session, add a new row for this
-  session's changes (append `(session N)` to the prompt text so it's clear).
-  Never modify or remove the instructor's existing `src/main.odin` row.
+`| \`a.odin\`, \`b.odin\` | claude-code, <model> | <summary of the user's prompt> (session N) | <hand edits> |`
+
+- **Summary:** condense the prompt to 1–2 sentences in the user's terms (what they
+  asked for), in the style of the existing `src/main.odin` row. **Never paste the raw
+  prompt.** Keep every request it contained, and don't add details the user didn't
+  ask for.
+- Rows go in prompt order. Append `(session N)` to each summary. Never modify or
+  remove the instructor's existing `src/main.odin` row.
 - **hand edits**: leave blank unless the user says they edited it by hand.
 - Also add rows under the assets table for any new asset files not made by the user
   (source, author, licence, changes; or tool + prompt if AI-generated).
@@ -432,6 +446,14 @@ Format: `S<n> · feature/bug · what happened · how verified`
   change in bullet count, so bullets leaving at the wall cancelled new shots. Rapid
   fire read 17 vs normal 18 (a false FAIL). Counting and clearing each frame gave the
   true 60 vs 18.
+
+- S1 · process mistake (session logging) · at the first "session end" Claude filled
+  ATTRIBUTION's "prompt (short)" column with its own descriptions of each file,
+  not summaries of the user's actual prompts. The user caught it. Fixed by
+  mapping every edit to the preceding prompt from the transcript (7 prompts), then
+  merged into one row per prompt with its files comma-separated, at the user's
+  request. `jam_session_stats.py --prompts` now prints the files edited under each
+  prompt so this can't drift again.
 
 ## Odin / Raylib notes (gotchas found while working)
 

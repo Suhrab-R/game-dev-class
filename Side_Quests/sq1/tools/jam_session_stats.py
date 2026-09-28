@@ -199,10 +199,15 @@ def main():
         print(f"BREAK         : {local(a)} -> {local(b)} ({mins:.0f} min). Per the README this "
               f"ends a session; ask the user whether it should be split into two rows.")
     if args.prompts:
-        print("\nprompts:")
-        for t, text, _ in win_prompts:
-            one_line = " ".join(text.split())
-            print(f"  [{local(t)}] {one_line[:400]}{'...' if len(one_line) > 400 else ''}")
+        # Each prompt, followed by the files Claude edited in response to it (every edit
+        # between this prompt and the next one). This is what ATTRIBUTION.md rows are built
+        # from: one row per (file, prompt), with a summary of that prompt.
+        print("\nprompts (with the files edited in response to each):")
+        for i, (t, text, _) in enumerate(win_prompts):
+            next_t = win_prompts[i + 1][0] if i + 1 < len(win_prompts) else end
+            files = sorted({Path(p).name for et, p in edits if t < et <= next_t}, key=str.lower)
+            print(f"\n  [{local(t)}] {' '.join(text.split())}")
+            print(f"    -> edited: {', '.join(files) if files else '(nothing)'}")
 
 
 if __name__ == "__main__":
