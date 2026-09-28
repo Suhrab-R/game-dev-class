@@ -5,8 +5,14 @@ This folder (`Side_Quests/sq1/`) holds one course assignment: the CSCI 4160U
 SQ2". It's the same assignment, just stored in the `sq1` folder.
 
 **All the work happens in `mini-jam/`.** That folder is what gets graded and
-submitted. Everything else in `sq1/` (this file, `tools/`) is personal workflow
-support and is not part of the submission.
+submitted. Everything else in `sq1/` (this file, `tools/`, `CODE_GUIDE.md`) is
+personal workflow support and is not part of the submission.
+
+`sq1/CODE_GUIDE.md` is the user's study guide for explaining the code in
+spot-checks: reading order, Odin cheat sheet, explanations of the key procs and
+math, design decisions, experiments, and practice questions. **When a change makes
+it wrong** (a renamed proc, a new mechanic, changed numbers like timings or odds),
+update the matching section in the same turn.
 
 The repo root is `game-dev-class/` (one repo for the whole course; other folders
 like `Encounters/` and `Lab1/` are unrelated class work, don't touch them).
@@ -390,6 +396,7 @@ How:
 
 - Update **Current status** above (date, what works now, what's next) and add
   anything learned to *Postmortem evidence* / *Odin notes*.
+- Check `CODE_GUIDE.md` still matches the code (numbers, proc names, new mechanics).
 - Show the user the new CSV row and ATTRIBUTION rows. Offer to commit and push,
   since that's how the laptop gets the latest state.
 
